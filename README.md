@@ -1,108 +1,144 @@
-# SOS Notification System
+# SOS Alert System with AES Encryption (UDP Communication)
 
-This project implements an SOS notification system that allows workstations to send emergency alerts to a central server. The central server can then send notifications via email or Slack. This system is useful for environments where quick alerts and notifications are necessary.
+This project implements an SOS alert system where a client sends an emergency alert to a central server using **UDP** for communication. The alert is encrypted using **AES encryption** (via the Fernet module from the `cryptography` library) to ensure secure transmission of the alert data.
+
+Once the server receives and decrypts the SOS alert, it sends notifications via **Slack Webhook** and **Email**.
 
 ## Features
 
-- **SOS Button Application**: A Python-based desktop application that displays a button on Windows desktops. When clicked, it sends an SOS alert to the central server.
-- **Central Server**: A Python Flask-based server that listens for SOS alerts and sends notifications via:
-  - **Email** (using SMTP)
-  - **Slack** (using an incoming webhook)
-- **Workstation Information**: The SOS alert includes the workstation's IP address, hostname, and currently logged-in user.
-
-## Technologies Used
-
-- **Python**: Core programming language for both client and server.
-- **Flask**: Web framework for building the central server.
-- **SMTP**: For sending email notifications.
-- **Slack Webhooks**: For sending notifications to a Slack channel.
+- **UDP Communication**: Lightweight and fast communication between the client and server using UDP.
+- **AES Encryption**: The SOS alerts are securely encrypted using AES encryption (Fernet) before transmission.
+- **Slack Notification**: The server sends the alert details to a Slack channel via a webhook.
+- **Email Notification**: The server sends the alert details via email using an SMTP server.
+- **Responsive Client UI**: The client uses a **Tkinter** UI for the SOS button and doesn’t block the user interface during alert transmission.
 
 ## Requirements
 
-- Python 3.x
-- Pip for installing dependencies
+- **Python 3.x**
+- Python Libraries:
+  - `cryptography` (for AES encryption/decryption)
+  - `requests` (for sending Slack notifications)
+  - SMTP server for sending emails
 
-## Setup
+### Python Libraries Installation
 
-### 1. Clone the Repository
+To install the necessary Python libraries, run the following command:
 
 ```bash
-git clone https://github.com/yashar6909/sos-application.git
-cd sos-notification-system
+pip install cryptography requests
+```
 
-2. Install Dependencies
-bash
-Copy code
-pip install -r requirements.txt
-3. Configure the Server
-Edit the sos_server.py file to update the email and Slack configuration:
+## How It Works
 
-Email Settings: Replace the placeholders with your email credentials and SMTP server information.
+1. The **client** collects workstation information (IP address, hostname, and logged-in user), encrypts the data using AES, and sends it over UDP to the server.
+2. The **server** listens for incoming UDP packets, decrypts the data, and sends the alert details via Slack and email.
 
-python
-Copy code
-EMAIL_ADDRESS = "your_email@example.com"
-EMAIL_PASSWORD = "your_email_password"
-EMAIL_SMTP_SERVER = "smtp.example.com"
-EMAIL_SMTP_PORT = 587  # Use 587 for TLS
-RECIPIENT_EMAIL = "recipient@example.com"
-Slack Webhook: Replace SLACK_WEBHOOK_URL with your actual Slack Incoming Webhook URL.
+## Security Considerations
 
-python
-Copy code
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/your/slack/webhook"
-4. Running the Server
-Start the Flask server:
+- **AES Encryption**: The SOS alerts are encrypted with a 32-byte AES key (using the Fernet module). This key must be securely shared between the client and server.
+- **UDP Limitations**: Since UDP is connectionless and does not guarantee delivery, the client sends the SOS alert without confirmation of receipt. You may want to add retries or acknowledgments if needed.
+- **Email and Slack Credentials**: Ensure that your email credentials and Slack Webhook URL are stored securely, possibly using environment variables.
 
-bash
-Copy code
-python sos_server.py
-The server will start on http://0.0.0.0:5000. It will listen for incoming SOS alerts from workstations and send notifications.
+## Setup Instructions
 
-5. Deploy the SOS Button on Workstations
-The SOS button application is designed for Windows workstations. To run it, follow these steps:
+### 1. Server Setup
 
-Install Python on the workstation.
+1. Clone this repository or copy the server code from this repository.
+2. Install the required Python packages:
+   ```bash
+   pip install cryptography requests
+   ```
+3. Set up your email and Slack Webhook credentials in the server script:
+   - **Email Setup**: Update the following variables in the server script with your email settings:
+     ```python
+     EMAIL_ADDRESS = "your_email@example.com"
+     EMAIL_PASSWORD = "your_email_password"
+     EMAIL_SMTP_SERVER = "smtp.example.com"  # For example: smtp.gmail.com
+     EMAIL_SMTP_PORT = 587  # Use 587 for TLS
+     RECIPIENT_EMAIL = "recipient@example.com"
+     ```
+   - **Slack Webhook Setup**: Replace the `SLACK_WEBHOOK_URL` variable with your Slack webhook URL:
+     ```python
+     SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/your/slack/webhook"
+     ```
 
-Create an executable from the Python script using PyInstaller:
+4. **Run the server**:
+   ```bash
+   python server.py
+   ```
+   The server will start listening on port `5000` for incoming UDP packets.
 
-bash
-Copy code
-pyinstaller --onefile --windowed sos_button.py
-Distribute the generated executable to workstations or package it as an MSI (see the packaging section below).
+### 2. Client Setup
 
-6. Packaging as an MSI Installer (Optional)
-If you'd like to distribute the SOS button as an MSI installer, follow the steps in the documentation or use a tool like WiX Toolset or Inno Setup.
+1. Clone this repository or copy the client code from this repository.
+2. Install the required Python packages:
+   ```bash
+   pip install cryptography
+   ```
+3. Generate a 32-byte AES key that will be used by both the client and server:
+   ```python
+   from cryptography.fernet import Fernet
+   key = Fernet.generate_key()
+   print(key.decode())  # Copy this key and use it in both client and server
+   ```
+4. Set this key in the client and server scripts:
+   - In both the client and server scripts, update the `KEY` variable:
+     ```python
+     KEY = b'your_32_byte_secret_key_here'  # Replace with your generated key
+     ```
 
-Server Endpoint
-The SOS button sends a POST request to the /sos endpoint of the Flask server with the following JSON payload:
+5. **Run the client**:
+   ```bash
+   python client.py
+   ```
 
-json
-Copy code
-{
-  "message": "SOS triggered!",
-  "ip_address": "192.168.x.x",
-  "workstation_name": "DESKTOP-XYZ",
-  "current_user": "username"
-}
-Response
-The server will respond with the following JSON object, indicating the status of email and Slack notifications:
+6. The client provides a GUI SOS button. When clicked, it sends an encrypted SOS alert to the server via UDP.
 
-json
-Copy code
-{
-  "status": "SOS notification received",
-  "email_status": "Email sent successfully",
-  "slack_status": "Slack notification sent successfully"
-}
-Customization
-You can modify the behavior of the server by adding additional notification methods (e.g., SMS), or change the UI of the SOS button application to suit your needs.
+## Communication Flow
 
-Contributing
-Fork the repository.
-Create your feature branch (git checkout -b feature/AmazingFeature).
-Commit your changes (git commit -m 'Add some AmazingFeature').
-Push to the branch (git push origin feature/AmazingFeature).
-Open a Pull Request.
-License
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. **Client** sends an encrypted SOS message over UDP.
+2. **Server** decrypts the message and sends notifications:
+   - **Slack Webhook**: The server sends the alert details to a Slack channel via the configured webhook.
+   - **Email**: The server sends an email with the alert details to the specified recipient.
+
+## Example Slack and Email Notification
+
+After receiving an SOS alert, the server will send notifications that look like this:
+
+### Example Slack Message:
+```
+SOS Alert triggered!
+Message: SOS triggered!
+IP Address: 192.168.1.100
+Workstation Name: DESKTOP-XYZ
+Current User: user123
+```
+
+### Example Email Notification:
+**Subject**: SOS Alert from Workstation
+
+**Body**:
+```
+SOS Alert triggered!
+Message: SOS triggered!
+IP Address: 192.168.1.100
+Workstation Name: DESKTOP-XYZ
+Current User: user123
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Feel free to contribute to this project! Here’s how:
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature-branch`).
+3. Make your changes.
+4. Submit a pull request.
+
+## Contact
+
+For any questions or issues, please feel free to create an issue in the GitHub repository or reach out at [yashar6909@gmail.com].
+
