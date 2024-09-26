@@ -1,8 +1,11 @@
-from flask import Flask, request, jsonify
+import socket
 import smtplib
 import requests
+from cryptography.fernet import Fernet
 
-app = Flask(__name__)
+# AES Encryption Key (Must be the same as the one on the client)
+KEY = b'your_32_byte_secret_key_here'  # Ensure this key is 32 bytes long
+cipher_suite = Fernet(KEY)
 
 # Email configuration
 EMAIL_ADDRESS = "your_email@example.com"
@@ -13,6 +16,13 @@ RECIPIENT_EMAIL = "recipient@example.com"
 
 # Slack Webhook URL (Replace this with your actual Slack Webhook URL)
 SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/your/slack/webhook"
+
+def decrypt_data(encrypted_data):
+    """
+    Decrypt the given data using AES (Fernet) decryption.
+    """
+    decrypted_data = cipher_suite.decrypt(encrypted_data)
+    return eval(decrypted_data.decode('utf-8'))  # Convert back to dictionary
 
 def send_email(subject, body):
     """
@@ -46,16 +56,15 @@ def send_slack_message(message):
         print(f"Error sending Slack message: {e}")
         return False
 
-@app.route("/sos", methods=["POST"])
-def handle_sos():
+def handle_sos(data):
     """
-    Endpoint to handle incoming SOS requests.
+    Handle the decrypted SOS alert by sending a Slack message and an email notification.
     """
-    data = request.json
-    message = data.get("message", "SOS Alert!")
-    ip_address = data.get("ip_address")
-    workstation_name = data.get("workstation_name")
-    current_user = data.get("current_user")
+    decrypted_data = decrypt_data(data)
+    message = decrypted_data.get("message", "SOS Alert!")
+    ip_address = decrypted_data.get("ip_address")
+    workstation_name = decrypted_data.get("workstation_name")
+    current_user = decrypted_data.get("current_user")
 
     # Prepare the notification message
     notification_message = (
@@ -79,12 +88,26 @@ def handle_sos():
     else:
         slack_status = "Failed to send Slack notification"
 
-    # Respond to the SOS request
-    return jsonify({
-        "status": "SOS notification received",
-        "email_status": email_status,
-        "slack_status": slack_status
-    }), 200
+    print(f"Notification Results: {email_status}, {slack_status}")
+
+def start_server():
+    """
+    Start the UDP server to listen for incoming SOS alerts.
+    """
+    server_ip = "0.0.0.0"  # Listen on all network interfaces
+    server_port = 5000
+
+    # Create a UDP socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_sock:
+        server_sock.bind((server_ip, server_port))
+        print(f"Server listening on {server_ip}:{server_port} for UDP packets")
+
+        while True:
+            # Receive the data (UDP is connectionless, so there's no connection accept)
+            data, client_address = server_sock.recvfrom(1024)  # Buffer size
+            print(f"Received SOS from {client_address}")
+            if data:
+                handle_sos(data)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    start_server()
