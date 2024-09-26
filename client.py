@@ -1,9 +1,13 @@
-import tkinter as tk
-import requests
 import socket
 import os
-import time
 import threading
+from cryptography.fernet import Fernet
+
+# AES Encryption Key (Must be the same as the one on the server)
+KEY = b'your_32_byte_secret_key_here'  # Ensure this key is 32 bytes
+
+# Initialize Fernet with the AES key
+cipher_suite = Fernet(KEY)
 
 def get_workstation_info():
     try:
@@ -25,39 +29,40 @@ def get_workstation_info():
         print(f"Error fetching workstation info: {e}")
         return None
 
-def send_sos(num_alerts=3, delay_between_alerts=1):
+def encrypt_data(data):
     """
-    Sends multiple SOS alerts with a delay between each.
-    
-    Args:
-        num_alerts (int): Number of alerts to send.
-        delay_between_alerts (int): Delay (in seconds) between alerts.
+    Encrypt the given data using AES (Fernet) encryption.
+    """
+    # Convert dictionary to string, then bytes
+    data_bytes = str(data).encode('utf-8')
+    # Encrypt the data
+    encrypted_data = cipher_suite.encrypt(data_bytes)
+    return encrypted_data
+
+def send_sos():
+    """
+    Sends a single SOS alert via UDP socket without blocking the UI.
     """
     try:
-        # Replace with your server endpoint
-        server_url = "http://{serverURLhere}:5000/sos"
-        
+        # Replace with your server IP and port (where UDP server is listening)
+        server_ip = "127.0.0.1"  # Localhost for testing
+        server_port = 5000
+
         # Get the workstation information
         workstation_info = get_workstation_info()
-        
+
         if workstation_info:
-            for i in range(num_alerts):
-                # Send a POST request to the central server with workstation info
-                response = requests.post(server_url, json={
-                    "message": f"SOS triggered! Alert {i+1}",
-                    "ip_address": workstation_info["ip_address"],
-                    "workstation_name": workstation_info["workstation_name"],
-                    "current_user": workstation_info["current_user"]
-                })
-                
-                if response.status_code == 200:
-                    print(f"SOS Alert {i+1} sent successfully")
-                else:
-                    print(f"Failed to send SOS Alert {i+1}: {response.status_code}")
-                
-                # Wait for the specified delay before sending the next alert
-                if i < num_alerts - 1:
-                    time.sleep(delay_between_alerts)
+            # Prepare the message
+            workstation_info["message"] = "SOS triggered!"
+            
+            # Encrypt the payload
+            encrypted_payload = encrypt_data(workstation_info)
+            
+            # Create a UDP socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                # Send the encrypted data to the server
+                sock.sendto(encrypted_payload, (server_ip, server_port))
+                print("SOS Alert sent successfully via UDP.")
         else:
             print("Failed to collect workstation info.")
     except Exception as e:
@@ -65,31 +70,20 @@ def send_sos(num_alerts=3, delay_between_alerts=1):
 
 def on_sos_click():
     """
-    Starts a thread to send SOS alerts to avoid blocking the main GUI thread.
+    Starts a thread to send a single SOS alert to avoid blocking the main GUI thread.
     """
-    threading.Thread(target=send_sos, args=(3, 2)).start()  # Sends 3 alerts with 2 seconds delay between each
+    threading.Thread(target=send_sos).start()  # Send 1 alert in a separate thread
 
-# Set up the GUI for SOS button
+# Tkinter GUI code for SOS button remains unchanged
+import tkinter as tk
 root = tk.Tk()
 root.title("SOS Button")
-
-# Make the window always on top and set no border
-root.overrideredirect(True)  # Removes the window border
-root.attributes("-topmost", True)  # Keep it on top of all windows
-
-# Set the button appearance
+root.overrideredirect(True)
+root.attributes("-topmost", True)
 sos_button = tk.Button(root, text="SOS", command=on_sos_click, font=("Arial", 20), bg="red", fg="white")
 sos_button.pack(pady=20, padx=20)
-
-# Get screen width and height
 screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
-
-# Calculate the horizontal position (center of the screen)
-window_width = 200  # Width of the SOS button window
+window_width = 200
 x_position = (screen_width // 2) - (window_width // 2)
-
-# Set the window position (top-middle of the screen)
-root.geometry(f"{window_width}x100+{x_position}+0")  # Adjust window height and y-position as needed
-
+root.geometry(f"{window_width}x100+{x_position}+0")
 root.mainloop()
